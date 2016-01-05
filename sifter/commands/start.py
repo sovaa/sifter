@@ -39,7 +39,7 @@ class StartCommand:
         return ok
 
     def load_model(self):
-
+        pass
 
     def run_twisted(self):
         from twisted.internet import protocol, reactor
