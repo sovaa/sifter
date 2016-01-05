@@ -38,12 +38,15 @@ def load_matrix(filename, num_users, num_items):
         if i % 100000 == 0:
             print('loaded %i counts...' % i)
     print('loaded %i counts...' % len(counts))
+    print('num_zeros / total: %s / %s' % (num_zeros, total))
     alpha = num_zeros / total
     print('alpha %.2f' % alpha)
     #counts *= alpha
-    #counts = sparse.csr_matrix(counts)
+    t2 = time.time()
+    counts = sparse.csr_matrix(counts)
     t1 = time.time()
-    print('Finished loading matrix in %f seconds' % (t1 - t0))
+    print('sparse matrix creation took %f seconds' % (t1 - t2))
+    print('finished loading matrix in %f seconds' % (t1 - t0))
     return counts
 
 
@@ -168,8 +171,8 @@ def matrix_factorization(R, P, Q, K, steps=5000, alpha=0.0002, beta=0.02):
     return P, Q.T
 
 if __name__ == "__main__":
-    N = 3
-    M = 10
+    N = 3000
+    M = 452000
     counts = load_matrix('data.txt', N, M)
     #mf = ImplicitMF(counts, num_iterations=10, num_factors=10, num_threads=8)
     #mf.train_model()
@@ -182,8 +185,16 @@ if __name__ == "__main__":
     P = np.random.rand(N,K)
     Q = np.random.rand(M,K)
 
+    t0 = time.time()
     nP, nQ = matrix_factorization(R, P, Q, K)
+    t1 = time.time()
+    print("matrix factorization took %f seconds" % (t1 - t0))
+
+    t0 = time.time()
     nR = np.dot(nP, nQ.T)
+    t1 = time.time()
+    print("P dot Q took %f seconds" % (t1 - t0))
+
     print(nR)
 
 

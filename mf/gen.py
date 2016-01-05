@@ -3,12 +3,12 @@
 import math
 import random
 
-USERS=3
-ITEMS=10
+USERS=3000
+ITEMS=1000000
 MAX_SCORE=10.0
 
 def should_continue():
-    return random.random()*random.random()*5 > 1
+    return random.random()*5000 < 4999
 
 for user in range(USERS):
     for item in range(ITEMS):
