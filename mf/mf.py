@@ -47,7 +47,7 @@ class ImplicitMF:
             t1 = time.time()
             norm_diff = scipy.linalg.norm(user_vectors_old - self.user_vectors) + scipy.linalg.norm(item_vectors_old - self.item_vectors)
 
-            if i % int(self.num_iterations/5.0) == 0:
+            if i % int(self.num_iterations/30.0) == 0:
                 print('norm difference epoch %s: %s' % (i, norm_diff))
 
         print(np.dot(self.user_vectors, self.item_vectors.T))
@@ -227,13 +227,25 @@ def matrix_factorization(N, M, R, P, Q, K, steps=1000, alpha=0.0002, beta=0.02):
             break
     return P, Q.T
 
+
 def get_filename():
     import sys
     if len(sys.argv) > 1:
         return sys.argv[1]
     return 'data.txt'
 
-def run():
+
+def run_implicit_mf():
+    filename = get_filename()
+
+    counts = load_matrix(filename)
+    counts = to_sparse_matrix(counts)
+
+    mf = ImplicitMF(counts, num_iterations=10, num_factors=10, num_threads=8)
+    mf.train_model()
+
+
+def run_vanilla_mf():
     #mf = ImplicitMF(counts, num_iterations=10, num_factors=10, num_threads=8)
     #mf.train_model()
 
@@ -262,4 +274,5 @@ def run():
     save_model(filename.rstrip('.txt') + '.nr', nR)
 
 if __name__ == "__main__":
-    run()
+    #run_implicit_mf()
+    run_vanilla_mf()
