@@ -16,42 +16,10 @@ import scipy.linalg
 from scipy.sparse.linalg import spsolve
 from multiprocessing import Process, Queue
 import time
-
-def load_matrix(filename, num_users, num_items):
-    t0 = time.time()
-    counts = np.zeros((num_users, num_items))
-    total = 0.0
-    num_zeros = num_users * num_items
-    for i, line in enumerate(open(filename, 'r')):
-        user, item, count = line.strip().split('\t')
-        user = int(user)
-        item = int(item)
-        count = float(count)
-        if user >= num_users:
-            continue
-        if item >= num_items:
-            continue
-        if count != 0:
-            counts[user, item] = count
-            total += count
-            num_zeros -= 1
-        if i % 100000 == 0:
-            print('loaded %i counts...' % i)
-    print('loaded %i counts...' % len(counts))
-    print('num_zeros / total: %s / %s' % (num_zeros, total))
-    alpha = num_zeros / total
-    print('alpha %.2f' % alpha)
-    #counts *= alpha
-    t2 = time.time()
-    counts = sparse.csr_matrix(counts)
-    t1 = time.time()
-    print('sparse matrix creation took %f seconds' % (t1 - t2))
-    print('finished loading matrix in %f seconds' % (t1 - t0))
-    return counts
+import os
 
 
-class ImplicitMF():
-
+class ImplicitMF:
     def __init__(self, counts, num_factors=40, num_iterations=30,
                  reg_param=0.8, num_threads=1):
         self.counts = counts
@@ -148,9 +116,98 @@ class ImplicitMF():
                 print('Solved %d vecs in %d seconds (one thread)' % (cnt, time.time() - t))
         output.close()
 
-def matrix_factorization(R, P, Q, K, steps=5000, alpha=0.0002, beta=0.02):
+
+def save_model(outfile, model):
+    npz_file = outfile + '.npz'
+    np.savez(npz_file, M=model)
+    print("saved model %s." % npz_file)
+
+
+def load_model(path):
+    npz_file = np.load(path)
+    print("loaded model from %s" % path)
+    return npz_file['M']
+
+
+def load_matrix(filename_orig):
+    filename = filename_orig.rstrip('.txt')
+    if os.path.isfile(filename + '.npz'):
+        return load_model(filename + '.npz')
+
+    t0 = time.time()
+    total = 0.0
+    raw_counts = []
+    num_users = 0
+    num_items = 0
+    num_non_zeros = 0
+    for i, line in enumerate(open(filename + '.txt', 'r')):
+        user, item, count = line.strip().split('\t')
+        user = int(user)
+        item = int(item)
+        count = float(count)
+        if count != 0:
+            if user > num_users:
+                num_users = user
+            if item > num_items:
+                num_items = item
+
+            raw_counts.append((user, item, count))
+            #counts[user, item] = count
+            total += count
+            num_non_zeros += 1
+        if i % 100000 == 0:
+            print('loaded %i counts...' % i)
+
+    num_users += 1
+    num_items += 1
+    num_zeros = num_users * num_items - num_non_zeros
+    print("num_users %s, num_items %s" % (num_users, num_items))
+
+    counts = np.zeros((num_users, num_items))
+    for user, item, count in raw_counts:
+        counts[user, item] = count
+
+    print('loaded %i counts...' % len(counts))
+    print('num_zeros / total: %s / %s' % (num_zeros, total))
+    print(counts.shape)
+    alpha = num_zeros / total
+    print('alpha %.2f' % alpha)
+
+    t1 = time.time()
+    print('finished loading matrix in %f seconds' % (t1 - t0))
+    #counts *= alpha
+    save_model(filename, counts)
+    return counts
+
+
+def to_sparse_matrix(matrix):
+    t0 = time.time()
+    counts = sparse.csr_matrix(matrix)
+    t1 = time.time()
+    print('sparse matrix creation took %f seconds' % (t1 - t0))
+    return counts
+
+
+def get_remaining_time(start, steps, step):
+    avg_step_time = (time.time() - start) / step
+    remaining = int(avg_step_time * (steps - step))
+
+    seconds = remaining % 60
+    minutes = int((remaining / 60) % 60)
+    hours = int(remaining / 60 / 60)
+    return "%sh %sm %ss" % (hours, minutes, seconds)
+
+
+def matrix_factorization(N, M, R, P, Q, K, steps=1000, alpha=0.0002, beta=0.02):
+    start = time.time()
+
     Q = Q.T
     for step in range(steps):
+        if step > 0 and step % int(steps/10) == 0:
+            remaining = get_remaining_time(start, steps, step)
+            average = round((time.time() - start) / step, 2)
+            print("on step %s/%s, average step time %sms, remaining time: %s" % (step, steps, average, remaining))
+
         for i in range(N):
             for j in range(M):
                 if R[i, j] > 0:
@@ -158,7 +215,7 @@ def matrix_factorization(R, P, Q, K, steps=5000, alpha=0.0002, beta=0.02):
                     for k in range(K):
                         P[i][k] = P[i][k] + alpha * (2 * eij * Q[k][j] - beta * P[i][k])
                         Q[k][j] = Q[k][j] + alpha * (2 * eij * P[i][k] - beta * Q[k][j])
-        eR = np.dot(P,Q)
+        #eR = np.dot(P,Q)
         e = 0
         for i in range(N):
             for j in range(M):
@@ -170,23 +227,30 @@ def matrix_factorization(R, P, Q, K, steps=5000, alpha=0.0002, beta=0.02):
             break
     return P, Q.T
 
-if __name__ == "__main__":
-    N = 3000
-    M = 452000
-    counts = load_matrix('data.txt', N, M)
+def get_filename():
+    import sys
+    if len(sys.argv) > 1:
+        return sys.argv[1]
+    return 'data.txt'
+
+def run():
     #mf = ImplicitMF(counts, num_iterations=10, num_factors=10, num_threads=8)
     #mf.train_model()
-    print()
 
+    filename = get_filename()
+
+    counts = load_matrix(filename)
+    counts = to_sparse_matrix(counts)
+
+    N, M = counts.shape
     R = counts
-
     K = 2
-
     P = np.random.rand(N,K)
     Q = np.random.rand(M,K)
+    print("created random P,Q")
 
     t0 = time.time()
-    nP, nQ = matrix_factorization(R, P, Q, K)
+    nP, nQ = matrix_factorization(N, M, R, P, Q, K)
     t1 = time.time()
     print("matrix factorization took %f seconds" % (t1 - t0))
 
@@ -195,10 +259,7 @@ if __name__ == "__main__":
     t1 = time.time()
     print("P dot Q took %f seconds" % (t1 - t0))
 
-    print(nR)
+    save_model(filename.rstrip('.txt') + '.nr', nR)
 
-
-
-
-
-
+if __name__ == "__main__":
+    run()
